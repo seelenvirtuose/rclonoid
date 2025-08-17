@@ -1,18 +1,21 @@
 # RCLONOID
 
-Rclonoid is a small and simple command line tool for backing up ZFS file systems to any [rclone](https://rclone.org/) remote. It is inspired by the great tool [syncoid](https://github.com/jimsalterjrs/sanoid), hence the name.
+Rclonoid is a small and simple command line tool for replicating ZFS file systems to any [rclone](https://rclone.org/) remote. It is inspired by the great tool [syncoid](https://github.com/jimsalterjrs/sanoid), hence the name.
 
 ### Idea
 
-The above mentioned syncoid is a replication tool that uses `zfs send/receive` to back up any ZFS file system. Thus, it requires ZFS on the receiving side.
+Syncoid is a replication tool that uses `zfs send/receive` to replicate any ZFS file system. Thus, it requires ZFS on the receiving side.
 
-My use case is _simpler_: Back up any ZFS file system to a NAS device whose directories are locally mounted via NFS. I decided to do the actual backup via `rclone`, which makes it more general, because you then can back up your ZFS file systems to any _remote_.
+My use case is somewhat simpler: Replicate any ZFS file system to a NAS device whose directories are locally mounted via NFS. I decided to do the actual replication with `rclone`, which makes it more general. Thus, you can replicate your ZFS file systems to any configured rclone remote, even cloud storage. But you do not need ZFS on the receiving side.
 
 ### Usage
 
-At the moment, I do not know how far this really will go. But at least, there are two use cases: back up a single ZFS file system, and back up all _eligible_ ZFS file systems. Eligible means that a file system must be mounted. Otherwise, it will not be backed up.
+There are two use cases:
 
-There are at least these two typical commands:
+- Replicate a single ZFS file system.
+- Replicate all eligible ZFS file systems. Eligibility is determined by the mounted flag of a ZFS file system. If it is not mounted, then it is not eligible and thus not replicated.
+
+Examples:
 
 ```
 rclonoid single pool/data backup
