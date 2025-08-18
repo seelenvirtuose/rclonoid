@@ -4,22 +4,21 @@ Rclonoid is a small and simple command line tool for replicating ZFS file system
 
 ### Idea
 
-Syncoid is a replication tool that uses `zfs send/receive` to replicate any ZFS file system. Thus, it requires ZFS on the receiving side.
+Syncoid is a replication tool that uses `zfs send/receive` to replicate any ZFS file system. Thus, it primarily requires ZFS on the receiving side.
 
-My use case is somewhat simpler: Replicate any ZFS file system to a NAS device whose directories are locally mounted via NFS. I decided to do the actual replication with `rclone`, which makes it more general. Thus, you can replicate your ZFS file systems to any configured rclone remote, even cloud storage. But you do not need ZFS on the receiving side.
+Rclonoid, on the other hand, originated from the need to replicate ZFS file systems to a NAS device that does not have ZFS installed but serves its data via NFS.
+
+The idea was born to do the actual replication with `rclone sync`, which makes it much more general. Thus, you can replicate your ZFS file systems to any configured rclone remote, even cloud storage if you wish.
 
 ### Usage
 
 There are two use cases:
 
-- Replicate a single ZFS file system.
-- Replicate all eligible ZFS file systems. Eligibility is determined by the mounted flag of a ZFS file system. If it is not mounted, then it is not eligible and thus not replicated.
+- Replicate a single eligible ZFS file system.
+- Replicate all eligible ZFS file systems.
+ 
+Eligibility is determined by the mounted flag of a ZFS file system. If it is not mounted, then it is not eligible and thus not replicated.
 
-Examples:
+If running as a scheduled job, consider redirecting the output to a log file, because rclonoid prints out various log messages on the console.
 
-```
-rclonoid single pool/data backup
-rclonoid all backup
-```
-
-Here `pool/data` represents a single mounted ZFS file system, and `backup` must be a fully configured and reachable rclone remote.
+Run the command without any arguments to get more information.
