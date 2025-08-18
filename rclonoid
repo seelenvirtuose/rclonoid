@@ -1,0 +1,134 @@
+#!/bin/bash
+
+# The command:
+# rclone sync --create-empty-src-dirs /zfs/cpool/backup/.zfs/snapshot/rclonoid backup:/cpool/backup
+
+me=$(basename "$0")
+
+main() {
+  parse_arguments single --path=test/dir --test=bla backup noch eins --blubb=42 und noch mehr
+  parse_arguments all --path=test/dir --test=bla backup noch eins --blubb=42 und noch mehr
+  parse_arguments all --path=test/dir -test=bla backup noch eins -blubb=42 und noch mehr
+  parse_arguments bla --path=test/dir -test=bla backup noch eins -blubb=42 und noch mehr
+  parse_arguments
+  parse_arguments "     "
+}
+
+parse_arguments() {
+  echo "All arguments: \"$*\""
+
+  #if [ -z "$*" ]; then print_usage_and_exit; fi
+
+  declare arg_command
+  declare -A arg_long_options
+  declare -A arg_short_options
+  declare -a arg_values
+
+  declare option
+  declare opt_key
+  declare opt_value
+
+  arg_command="$1"
+  shift
+  while [ $# -gt 0 ]
+  do
+    case "$1" in
+      --*)
+        option="${1:2}"
+        shift
+        opt_key=$(echo "$option" | cut -d "=" -f 1)
+        opt_value=$(echo "$option" | cut -d "=" -f 2)
+        arg_long_options["$opt_key"]="$opt_value"
+        ;;
+      -*)
+        option="${1:1}"
+        shift
+        opt_key=$(echo "$option" | cut -d "=" -f 1)
+        opt_value=$(echo "$option" | cut -d "=" -f 2)
+        arg_short_options["$opt_key"]="$opt_value"
+        ;;
+      *)
+        arg_values+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  echo "Command: \"$arg_command\""
+  echo "Long options: \"${arg_long_options[*]@K}\""
+  echo "Short options: \"${arg_short_options[*]@K}\""
+  echo "Values: \"${arg_values[*]}\""
+
+  parse_and_check_command "$arg_command"
+  parse_and_check_long_options arg_long_options
+  parse_and_check_short_options arg_short_options
+  parse_and_check_values arg_values
+}
+
+parse_and_check_command() {
+  command="$1"
+  if [ -z $command ]
+  then
+    echo "Error: No command provided."
+    print_usage_and_exit
+  fi
+  case "$command" in
+    single|all)
+      ;;
+    *)
+      echo "Error: Unknown command \"$command\"."
+      print_usage_and_exit
+      ;;
+  esac
+}
+
+parse_and_check_long_options() {
+  echo "parse_and_check_long_options"
+}
+
+parse_and_check_short_options() {
+  echo "parse_and_check_short_options"
+}
+
+parse_and_check_values() {
+  echo "parse_and_check_values"
+}
+
+function print_usage_and_exit() {
+  echo "Usage:"
+  echo "  $me single <SOURCE> <TARGET>"
+  echo "  $me all <TARGET>"
+  echo
+  echo "Replicates one or more ZFS file systems via \"rclone sync\" to the specified"
+  echo "target."
+  echo
+  echo "  SOURCE      Designates the single ZFS file system to be replicated."
+  echo
+  echo "  TARGET      Identifies an rclone remote. Note that rclone remotes require a"
+  echo "              trailing colon. A path may also be appended. See examples."
+  echo
+  echo "Obviously, rclone must be installed and configured. Especially, the specified"
+  echo "target rclone remote must be configured and reachable."
+  echo
+  echo "ZFS file systems must be mounted so that they can be replicated. Otherwise they"
+  echo "are simply ignored. Technically, rclonoid first creates a snapshot, then syncs"
+  echo "all content of the snapshot directory to the target. If a ZFS file system is"
+  echo "not mounted, then there is no snapshot directory and thus it can't be synced."
+  echo
+  echo "Replicated data is put into a path which is derived from the name of the"
+  echo "replicated ZFS file system. See examples explanation."
+  echo
+  echo "If running as a scheduled job, consider redirecting the output to a log file,"
+  echo "because $me prints out various log messages on the console."
+  echo
+  echo "Examples:"
+  echo "  $me all backup:"
+  echo "  $me all backup:/all"
+  echo "  $me single pool/data backup:/single"
+  echo
+  echo "The last example replicates all content of the ZFS file system \"pool/data\""
+  echo "to the rclone remote path \"backup:/single/pool/data\"."
+  exit 2
+}
+
+main "$@"
