@@ -1,19 +1,119 @@
 #!/bin/bash
 
-# The command:
-# rclone sync --create-empty-src-dirs /zfs/cpool/backup/.zfs/snapshot/rclonoid backup:/cpool/backup
-
-me=$(basename "$0")
+me="rclonoid"
 
 main() {
   parse_and_check_arguments "$@"
+
+  # TODO Remove output
   echo "Command: \"$command\""
   echo "Source: \"$source\""
   echo "Target: \"$target\""
+
+  case "$command" in
+    single)
+      single_filesystem
+      ;;
+    all)
+      all_filesystems
+      ;;
+  esac
 }
 
-## Parses and checks the given arguments according to the specified usage.
-## Returns:
+single_filesystem() {
+  echo "Replicating single ZFS file system \"$source\" to rclone target \"$target\" ..."
+  replicate_filesystem "$source"
+  echo "Finished replicating single ZFS file system \"$source\" to rclone target \"$target\"."
+}
+
+## TODO Docs
+all_filesystems() {
+  echo "Replicating all ZFS file systems to rclone target \"$target\" ..."
+
+  # TODO Find all eligible file systems and call replicate_filesystem with it.
+
+  echo "Finished replicating all ZFS file systems to rclone target \"$target\"."
+}
+
+## TODO Docs
+replicate_filesystem() {
+  if ! is_filesystem_mounted "$1"
+  then
+    echo "File system \"$1\" is not mounted and will be ignored."
+    return
+  fi
+  declare snapshot_name
+  snapshot_name="${me}_$(date +%Y%m%dT%H%M%S)"
+  if create_snapshot "$1" "$snapshot_name"
+  then
+    do_sync "$1" "$snapshot_name"
+    destroy_snapshot "$1" "$snapshot_name"
+  fi
+}
+
+## TODO Docs
+is_filesystem_mounted() {
+  #test "$(zfs get -H -o value mounted "$1")" = "yes"
+  false
+}
+
+## TODO Docs
+create_snapshot() {
+  echo "Creating snapshot ..."
+  declare success
+
+  zfs snapshot "${1}@${2}" && success="true" || success="false"
+
+  if [ "$success" = "true" ]
+  then
+    echo "Snapshot successfully created."
+    true
+  else
+    echo "Error while creating snapshot."
+    false
+  fi
+}
+
+## TODO Docs
+do_sync() {
+  echo "Syncing ..."
+  declare success
+  declare mount_point
+
+  mount_point=$(zfs get -H -o value mount_point "$1")
+  rclone sync --create-empty-src-dirs "$mount_point/.zfs/snapshot/$2" "$target/$1" && success="true" || success="false"
+
+  if [ "$success" = "true" ]
+  then
+    echo "Successfully synced."
+    true
+  else
+    echo "Error while syncing."
+    false
+  fi
+}
+
+## TODO Docs
+destroy_snapshot() {
+  echo "Destroying snapshot ..."
+  declare success
+
+  zfs destroy "${1}@${2}" && success="true" || success="false"
+
+  if [ "$success" = "true" ]
+  then
+    echo "Snapshot successfully destroyed."
+    true
+  else
+    echo "Error while destroying snapshot."
+    false
+  fi
+}
+
+## Parses and checks the given arguments according to the documented usage.
+## If the arguments are invalid, usage is printed and this script exits.
+##
+## Sets global variables:
 ##   command   command to use
 ##   source    source zfs file system
 ##   target    target rclone remote
@@ -41,8 +141,8 @@ parse_and_check_arguments() {
       -*)
         arg_option="${1:1}"
         shift
-        arg_opt_key=$(echo "$arg_option" | cut -d "=" -f 1)
-        arg_opt_value=$(echo "$arg_option" | cut -d "=" -f 2)
+        arg_opt_key="$(echo "$arg_option" | cut -d "=" -f 1)"
+        arg_opt_value="$(echo "$arg_option" | cut -d "=" -f 2)"
         arg_options["$arg_opt_key"]="$arg_opt_value"
         ;;
       *)
@@ -79,28 +179,32 @@ parse_and_check_arguments() {
     single)
       if [ ${#arg_values[*]} -lt 2 ] || [ ${#arg_values[*]} -gt 2 ]
       then
-        usage_error "Error: Wrong number of arguments." "  The \"single\" command requires exactly two arguments: a source and a target."
+        usage_error \
+          "Error: Wrong number of arguments." \
+          "  The \"single\" command requires exactly two arguments: a source and a target."
       fi
       ;;
     all)
       if [ ${#arg_values[*]} -lt 1 ] || [ ${#arg_values[*]} -gt 1 ]
       then
-        usage_error "Error: Wrong number of arguments." "  The \"all\" command requires exactly one argument: the target."
+        usage_error \
+          "Error: Wrong number of arguments." \
+          "  The \"all\" command requires exactly one argument: the target."
       fi
       ;;
   esac
 
   # "Export" command and values
 
-  command=$arg_command
+  command="$arg_command"
   if [ "$command" = "single" ]
   then
-    source=${arg_values[0]}
-    target=${arg_values[1]}
+    source="${arg_values[0]}"
+    target="${arg_values[1]}"
   fi
   if [ "$command" = "all" ]
   then
-    target=${arg_values[0]}
+    target="${arg_values[0]}"
   fi
 }
 
@@ -132,12 +236,12 @@ function print_usage_and_exit() {
   echo "target rclone remote must be configured and reachable."
   echo
   echo "ZFS file systems must be mounted so that they can be replicated. Otherwise they"
-  echo "are simply ignored. Technically, rclonoid first creates a snapshot, then syncs"
+  echo "are simply ignored. Technically, $me first creates a snapshot, then syncs"
   echo "all content of the snapshot directory to the target. If a ZFS file system is"
-  echo "not mounted, then there is no snapshot directory and thus it can't be synced."
+  echo "not mounted, then there is no snapshot directory, and thus it can't be synced."
   echo
   echo "Replicated data is put into a path which is derived from the name of the"
-  echo "replicated ZFS file system. See examples explanation."
+  echo "replicated ZFS file system. See examples for an explanation."
   echo
   echo "If running as a scheduled job, consider redirecting the output to a log file,"
   echo "because $me prints out various log messages on the console."
@@ -148,7 +252,7 @@ function print_usage_and_exit() {
   echo "  $me single pool/data backup:/single"
   echo
   echo "The last example replicates all content of the ZFS file system \"pool/data\""
-  echo "to the rclone remote path \"backup:/single/pool/data\"."
+  echo "to the rclone remote \"backup:/single/pool/data\"."
   exit 2
 }
 
