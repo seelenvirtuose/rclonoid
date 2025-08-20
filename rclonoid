@@ -4,114 +4,132 @@ me="rclonoid"
 
 main() {
   parse_and_check_arguments "$@"
-
-  # TODO Remove output
-  echo "Command: \"$command\""
-  echo "Source: \"$source\""
-  echo "Target: \"$target\""
-
   case "$command" in
-    single)
-      single_filesystem
-      ;;
-    all)
-      all_filesystems
-      ;;
+    single) do_single_filesystem ;;
+    all) do_all_filesystems ;;
   esac
 }
 
-single_filesystem() {
-  echo "Replicating single ZFS file system \"$source\" to rclone target \"$target\" ..."
+## Replicates the defined source to the defined target.
+## Source and target arte already parsed from the CLI arguments that were passed to this script.
+do_single_filesystem() {
   replicate_filesystem "$source"
-  echo "Finished replicating single ZFS file system \"$source\" to rclone target \"$target\"."
 }
 
-## TODO Docs
-all_filesystems() {
-  echo "Replicating all ZFS file systems to rclone target \"$target\" ..."
-
+## Replicates all file systems to the defined target.
+## The target is already parsed from the CLI arguments that were passed to this script.
+do_all_filesystems() {
   # TODO Find all eligible file systems and call replicate_filesystem with it.
-
-  echo "Finished replicating all ZFS file systems to rclone target \"$target\"."
+  echo
 }
 
-## TODO Docs
+## Replicates the specified file system to the defined target.
+## The target is already parsed from the CLI arguments that were passed to this script.
+##
+## This function first checks eligibility of the specified file system.
+## Then a snapshot will be created, the file system gets synced, and then the snapshot will be destroyed.
+##
+## Arguments:
+##   $1   file system to be replicated
 replicate_filesystem() {
+  echo "Replicating ZFS file system \"$1\" to rclone destination \"$target\" ..."
   if ! is_filesystem_mounted "$1"
   then
-    echo "File system \"$1\" is not mounted and will be ignored."
-    return
+    echo "File system \"$1\" will be ignored. Either it is not mounted or the mounted option could not be retrieved."; return 0
   fi
   declare snapshot_name
   snapshot_name="${me}_$(date +%Y%m%dT%H%M%S)"
   if create_snapshot "$1" "$snapshot_name"
   then
-    do_sync "$1" "$snapshot_name"
+    sync "$1" "$snapshot_name"
     destroy_snapshot "$1" "$snapshot_name"
   fi
+  echo "Finished replicating ZFS file system \"$1\" to rclone destination \"$target\"."
 }
 
-## TODO Docs
+## Checks whether the specified file system is actually mounted.
+##
+## Arguments:
+##   $1   file system to check
+##
+## Returns:
+##   0   if `zfs` could be called successfully and file system is actually mounted
+##   1   otherwise
 is_filesystem_mounted() {
-  #test "$(zfs get -H -o value mounted "$1")" = "yes"
-  false
+  local zfs_opt_mounted
+  if ! zfs_opt_mounted=$(set -x; zfs get -H -o value mounted "$1")
+  then
+    echo "Error while trying to get the ZFS option \"mounted\"."; return 1
+  fi
+  test "$zfs_opt_mounted" = "yes"
 }
 
-## TODO Docs
+## Creates the ZFS snapshot.
+##
+## Arguments:
+##   $1   file system for which the snapshot shall be created
+##   $2   snapshot name
+##
+## Returns:
+##   0   if `zfs` could be called successfully
+##   1   otherwise
 create_snapshot() {
   echo "Creating snapshot ..."
-  declare success
-
-  zfs snapshot "${1}@${2}" && success="true" || success="false"
-
-  if [ "$success" = "true" ]
+  if ! (set -x; zfs snapshot "${1}@${2}")
   then
-    echo "Snapshot successfully created."
-    true
-  else
-    echo "Error while creating snapshot."
-    false
+    echo "Error while trying to create snapshot."; return 1
   fi
+  echo "Snapshot successfully created."
 }
 
-## TODO Docs
-do_sync() {
-  echo "Syncing ..."
-  declare success
+## Syncs the specified snapshot of the specified file system to the defined target.
+## The target is already parsed from the CLI arguments that were passed to this script.
+## This function expects the snapshot to be already created.
+##
+## Arguments:
+##   $1   file system to be synced
+##   $2   snapshot name
+##s
+## Returns:
+##   0   if `zfs` and `rclone` could be called successfully
+##   1   otherwise
+sync() {
+  echo "Sync source to target ..."
   declare mount_point
-
-  mount_point=$(zfs get -H -o value mount_point "$1")
-  rclone sync --create-empty-src-dirs "$mount_point/.zfs/snapshot/$2" "$target/$1" && success="true" || success="false"
-
-  if [ "$success" = "true" ]
+  if ! mount_point=$(set -x; zfs get -H -o value mount_point "$1")
   then
-    echo "Successfully synced."
-    true
-  else
-    echo "Error while syncing."
-    false
+    echo "Error while trying to get the ZFS option \"mount_point\"."; return 1
   fi
+  if ! (set -x; rclone sync --create-empty-src-dirs "$mount_point/.zfs/snapshot/$2" "$target/$1")
+  then
+    echo "Error while trying to \"rclone sync\"."; return 1
+  fi
+  echo "Successfully synced source to target."
 }
 
-## TODO Docs
+## Destroys the ZFS snapshot.
+##
+## Arguments:
+##   $1   file system for which the snapshot shall be destroyed
+##   $2   snapshot name
+##
+## Returns:
+##   0   if `zfs` could be called successfully
+##   1   otherwise
 destroy_snapshot() {
   echo "Destroying snapshot ..."
-  declare success
-
-  zfs destroy "${1}@${2}" && success="true" || success="false"
-
-  if [ "$success" = "true" ]
+  if ! (set -x; zfs destroy "${1}@${2}")
   then
-    echo "Snapshot successfully destroyed."
-    true
-  else
-    echo "Error while destroying snapshot."
-    false
+    echo "Error while trying to destroy snapshot."; return 1
   fi
+  echo "Snapshot successfully destroyed."
 }
 
 ## Parses and checks the given arguments according to the documented usage.
 ## If the arguments are invalid, usage is printed and this script exits.
+##
+## Arguments:
+##   $*   all command line arguments to this script
 ##
 ## Sets global variables:
 ##   command   command to use
@@ -201,24 +219,23 @@ parse_and_check_arguments() {
   then
     source="${arg_values[0]}"
     target="${arg_values[1]}"
-  fi
-  if [ "$command" = "all" ]
+  elif [ "$command" = "all" ]
   then
     target="${arg_values[0]}"
   fi
 }
 
-## Prints the given message, then prints the usage, and then exits with an exit code greater than 0.
+## Prints the specified message, then prints the usage, and then exits with exit code 2.
+##
+## Arguments:
+##   $@   all message lines to be printed
 usage_error() {
-  for line in "$@"
-  do
-    echo "$line"
-  done
+  for line in "$@"; do echo "$line"; done
   echo
   print_usage_and_exit
 }
 
-## Prints the usage, and then exits with an exit code greater than 0.
+## Prints the usage, and then exits with exit code 2.
 function print_usage_and_exit() {
   echo "Usage:"
   echo "  $me single <SOURCE> <TARGET>"
@@ -230,7 +247,7 @@ function print_usage_and_exit() {
   echo "  SOURCE      Designates the single ZFS file system to be replicated."
   echo
   echo "  TARGET      Identifies an rclone remote. Note that rclone remotes require a"
-  echo "              trailing colon. A path may also be appended. See examples."
+  echo "              trailing colon. A destination path may also be appended."
   echo
   echo "Obviously, rclone must be installed and configured. Especially, the specified"
   echo "target rclone remote must be configured and reachable."
@@ -252,7 +269,7 @@ function print_usage_and_exit() {
   echo "  $me single pool/data backup:/single"
   echo
   echo "The last example replicates all content of the ZFS file system \"pool/data\""
-  echo "to the rclone remote \"backup:/single/pool/data\"."
+  echo "to the rclone destination \"backup:/single/pool/data\"."
   exit 2
 }
 
