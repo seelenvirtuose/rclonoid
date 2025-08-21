@@ -5,22 +5,37 @@ me="rclonoid"
 main() {
   parse_and_check_arguments "$@"
   case "$command" in
-    single) do_single_filesystem ;;
-    all) do_all_filesystems ;;
+    single) replicate_single_filesystem ;;
+    all) replicate_all_filesystems ;;
   esac
 }
 
-## Replicates the defined source to the defined target.
-## Source and target arte already parsed from the CLI arguments that were passed to this script.
-do_single_filesystem() {
-  replicate_filesystem "$source"
+## Replicates the defined source file system to the defined target remote.
+## Source and target are already parsed from the CLI arguments that were passed to this script.
+##
+## Note that only mounted file systems will be replicated.
+replicate_single_filesystem() {
+  replicate "$source"
 }
 
-## Replicates all file systems to the defined target.
+## Replicates all file systems to the defined target remote.
 ## The target is already parsed from the CLI arguments that were passed to this script.
-do_all_filesystems() {
-  # TODO Find all eligible file systems and call replicate_filesystem with it.
-  echo
+##
+## Note that only mounted file systems will be replicated.
+replicate_all_filesystems() {
+  declare fs_list
+  log "Determine all ZFS file systems ..."
+  #if ! fs_list=$(set -x; zfs list -H -o name -t fs -r)
+  if ! fs_list="test pool"
+  then
+    log "Error while trying to determine all ZFS file systems."; return 1
+  fi
+  log "Successfully determined all ZFS file systems."
+  for fs in $fs_list
+  do
+    echo
+    replicate "$fs"
+  done
 }
 
 ## Replicates the specified file system to the defined target.
@@ -31,20 +46,21 @@ do_all_filesystems() {
 ##
 ## Arguments:
 ##   $1   file system to be replicated
-replicate_filesystem() {
-  echo "Replicating ZFS file system \"$1\" to rclone destination \"$target\" ..."
+replicate() {
+  log "Replicating ZFS file system \"$1\" to rclone destination \"$target\" ..."
   if ! is_filesystem_mounted "$1"
   then
-    echo "File system \"$1\" will be ignored. Either it is not mounted or the mounted option could not be retrieved."; return 0
+    log "File system \"$1\" will be ignored. Either it is not mounted or the mounted option could not be retrieved.";
+  else
+    declare snapshot_name
+    snapshot_name="${me}_$(date +%Y%m%dT%H%M%S)"
+    if create_snapshot "$1" "$snapshot_name"
+    then
+      sync "$1" "$snapshot_name"
+      destroy_snapshot "$1" "$snapshot_name"
+    fi
   fi
-  declare snapshot_name
-  snapshot_name="${me}_$(date +%Y%m%dT%H%M%S)"
-  if create_snapshot "$1" "$snapshot_name"
-  then
-    sync "$1" "$snapshot_name"
-    destroy_snapshot "$1" "$snapshot_name"
-  fi
-  echo "Finished replicating ZFS file system \"$1\" to rclone destination \"$target\"."
+  log "Finished replicating ZFS file system \"$1\" to rclone destination \"$target\"."
 }
 
 ## Checks whether the specified file system is actually mounted.
@@ -59,7 +75,7 @@ is_filesystem_mounted() {
   local zfs_opt_mounted
   if ! zfs_opt_mounted=$(set -x; zfs get -H -o value mounted "$1")
   then
-    echo "Error while trying to get the ZFS option \"mounted\"."; return 1
+    log "Error while trying to get the ZFS option \"mounted\"."; return 1
   fi
   test "$zfs_opt_mounted" = "yes"
 }
@@ -74,12 +90,12 @@ is_filesystem_mounted() {
 ##   0   if `zfs` could be called successfully
 ##   1   otherwise
 create_snapshot() {
-  echo "Creating snapshot ..."
+  log "Creating snapshot ..."
   if ! (set -x; zfs snapshot "${1}@${2}")
   then
-    echo "Error while trying to create snapshot."; return 1
+    log "Error while trying to create snapshot."; return 1
   fi
-  echo "Snapshot successfully created."
+  log "Snapshot successfully created."
 }
 
 ## Syncs the specified snapshot of the specified file system to the defined target.
@@ -94,17 +110,17 @@ create_snapshot() {
 ##   0   if `zfs` and `rclone` could be called successfully
 ##   1   otherwise
 sync() {
-  echo "Sync source to target ..."
+  log "Sync source to target ..."
   declare mount_point
   if ! mount_point=$(set -x; zfs get -H -o value mount_point "$1")
   then
-    echo "Error while trying to get the ZFS option \"mount_point\"."; return 1
+    log "Error while trying to get the ZFS option \"mount_point\"."; return 1
   fi
   if ! (set -x; rclone sync --create-empty-src-dirs "$mount_point/.zfs/snapshot/$2" "$target/$1")
   then
-    echo "Error while trying to \"rclone sync\"."; return 1
+    log "Error while trying to \"rclone sync\"."; return 1
   fi
-  echo "Successfully synced source to target."
+  log "Successfully synced source to target."
 }
 
 ## Destroys the ZFS snapshot.
@@ -117,12 +133,12 @@ sync() {
 ##   0   if `zfs` could be called successfully
 ##   1   otherwise
 destroy_snapshot() {
-  echo "Destroying snapshot ..."
+  log "Destroying snapshot ..."
   if ! (set -x; zfs destroy "${1}@${2}")
   then
-    echo "Error while trying to destroy snapshot."; return 1
+    log "Error while trying to destroy snapshot."; return 1
   fi
-  echo "Snapshot successfully destroyed."
+  log "Snapshot successfully destroyed."
 }
 
 ## Parses and checks the given arguments according to the documented usage.
@@ -225,18 +241,21 @@ parse_and_check_arguments() {
   fi
 }
 
-## Prints the specified message, then prints the usage, and then exits with exit code 2.
+## Prints the specified error message, then prints the usage, and then exits with exit code 2.
 ##
 ## Arguments:
 ##   $@   all message lines to be printed
 usage_error() {
   for line in "$@"; do echo "$line"; done
   echo
-  print_usage_and_exit
+  print_usage_and_exit 2
 }
 
-## Prints the usage, and then exits with exit code 2.
-function print_usage_and_exit() {
+## Prints the usage, and then exits with the specified exit code.
+##
+## Arguments:
+##   $1   exit code
+print_usage_and_exit() {
   echo "Usage:"
   echo "  $me single <SOURCE> <TARGET>"
   echo "  $me all <TARGET>"
@@ -270,7 +289,17 @@ function print_usage_and_exit() {
   echo
   echo "The last example replicates all content of the ZFS file system \"pool/data\""
   echo "to the rclone destination \"backup:/single/pool/data\"."
-  exit 2
+  exit "$1"
+}
+
+## Prints the specified message with a prepended timestamp.
+##
+## Arguments:
+##   $1   message to be printed
+log() {
+  declare ts
+  ts=$(date -Iseconds)
+  echo "[$ts] $1"
 }
 
 main "$@"
