@@ -111,12 +111,12 @@ create_snapshot() {
 ##   1   otherwise
 sync() {
   log "Sync source to target ..."
-  declare mount_point
-  if ! mount_point=$(set -x; zfs get -H -o value mount_point "$1")
+  declare mountpoint
+  if ! mountpoint=$(set -x; zfs get -H -o value mountpoint "$1")
   then
-    log "Error while trying to get the ZFS option \"mount_point\"."; return 1
+    log "Error while trying to get the ZFS option \"mountpoint\"."; return 1
   fi
-  if ! (set -x; rclone sync --create-empty-src-dirs "$mount_point/.zfs/snapshot/$2" "$target/$1")
+  if ! (set -x; rclone sync --create-empty-src-dirs "$mountpoint/.zfs/snapshot/$2" "$target/$1")
   then
     log "Error while trying to \"rclone sync\"."; return 1
   fi
