@@ -1,22 +1,24 @@
 # RCLONOID
 
-Rclonoid is a small and simple command line tool for backing up ZFS file systems to any [rclone](https://rclone.org/) remote. It is inspired by the great tool [syncoid](https://github.com/jimsalterjrs/sanoid), hence the name.
+Rclonoid is a small and simple command line tool for replicating ZFS file systems to any [rclone](https://rclone.org/) remote. It is inspired by the great tool [syncoid](https://github.com/jimsalterjrs/sanoid), hence the name.
 
 ### Idea
 
-The above mentioned syncoid is a replication tool that uses `zfs send/receive` to back up any ZFS file system. Thus, it requires ZFS on the receiving side.
+Syncoid is a replication tool that uses `zfs send/receive` to replicate any ZFS file system. Thus, it primarily requires ZFS on the receiving side.
 
-My use case is _simpler_: Back up any ZFS file system to a NAS device whose directories are locally mounted via NFS. I decided to do the actual backup via `rclone`, which makes it more general, because you then can back up your ZFS file systems to any _remote_.
+Rclonoid, on the other hand, originated from the need to replicate ZFS file systems to a NAS device that does not have ZFS installed but serves its data via NFS.
+
+The idea was born to do the actual replication with `rclone sync`, which makes it much more general. Thus, you can replicate your ZFS file systems to any configured rclone remote, even cloud storage if you wish.
 
 ### Usage
 
-At the moment, I do not know how far this really will go. But at least, there are two use cases: back up a single ZFS file system, and back up all _eligible_ ZFS file systems. Eligible means that a file system must be mounted. Otherwise, it will not be backed up.
+There are two use cases:
 
-There are at least these two typical commands:
+- Replicate a single eligible ZFS file system.
+- Replicate all eligible ZFS file systems.
+ 
+Eligibility is determined by the mounted flag of a ZFS file system. If it is not mounted, then it is not eligible and thus not replicated.
 
-```
-rclonoid single pool/data backup
-rclonoid all backup
-```
+If running as a scheduled job, consider redirecting the output to a log file, because rclonoid prints out various log messages on the console.
 
-Here `pool/data` represents a single mounted ZFS file system, and `backup` must be a fully configured and reachable rclone remote.
+Run the command without any arguments to get more information.
