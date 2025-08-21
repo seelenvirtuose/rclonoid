@@ -25,8 +25,7 @@ replicate_single_filesystem() {
 replicate_all_filesystems() {
   declare fs_list
   log "Determine all ZFS file systems ..."
-  #if ! fs_list=$(set -x; zfs list -H -o name -t fs -r)
-  if ! fs_list="test pool"
+  if ! fs_list=$(set -x; zfs list -H -o name -t fs -r)
   then
     log "Error while trying to determine all ZFS file systems."; return 1
   fi
