@@ -23,19 +23,21 @@ replicate_single_filesystem() {
 ##
 ## Note that only mounted file systems will be replicated.
 replicate_all_filesystems() {
-  declare fs_list
   log "Determine all ZFS file systems ..."
+  declare fs_list
   if ! fs_list=$(set -x; zfs list -H -o name -t fs -r)
   then
     log "Error while trying to determine all ZFS file systems."; return 1
   fi
   log "Successfully determined all ZFS file systems. Sic:"
   echo "$fs_list"
+  log "Replicating all ZFS file systems to rclone destination \"$target\" ..."
   for fs in $fs_list
   do
     echo
     replicate "$fs"
   done
+  log "Finished replicating all ZFS file systems to rclone destination \"$target\"."
 }
 
 ## Replicates the specified file system to the defined target.
@@ -72,7 +74,7 @@ replicate() {
 ##   0   if `zfs` could be called successfully and file system is actually mounted
 ##   1   otherwise
 is_filesystem_mounted() {
-  local zfs_opt_mounted
+  declare zfs_opt_mounted
   if ! zfs_opt_mounted=$(set -x; zfs get -H -o value mounted "$1")
   then
     log "Error while trying to get the ZFS option \"mounted\"."; return 1
