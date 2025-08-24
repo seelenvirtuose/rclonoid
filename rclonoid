@@ -29,7 +29,8 @@ replicate_all_filesystems() {
   then
     log "Error while trying to determine all ZFS file systems."; return 1
   fi
-  log "Successfully determined all ZFS file systems: $fs_list"
+  log "Successfully determined all ZFS file systems. Sic:"
+  echo "$fs_list"
   for fs in $fs_list
   do
     echo
