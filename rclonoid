@@ -23,7 +23,7 @@ replicate_single_filesystem() {
 ##
 ## Note that only mounted file systems will be replicated.
 replicate_all_filesystems() {
-  log "Determine all ZFS file systems ..."
+  log "Determining all ZFS file systems ..."
   declare fs_list
   if ! fs_list=$(set -x; zfs list -H -o name -t fs -r)
   then
@@ -31,12 +31,14 @@ replicate_all_filesystems() {
   fi
   log "Successfully determined all ZFS file systems. Sic:"
   echo "$fs_list"
+  echo
   log "Replicating all ZFS file systems to rclone destination \"$target\" ..."
   for fs in $fs_list
   do
     echo
     replicate "$fs"
   done
+  echo
   log "Finished replicating all ZFS file systems to rclone destination \"$target\"."
 }
 
@@ -156,7 +158,7 @@ destroy_snapshot() {
 parse_and_check_arguments() {
   if [ -z "$*" ] || [ "$1" = "help" ]
   then
-    print_usage_and_exit
+    print_usage_and_exit 0
   fi
 
   # Parse all arguments
