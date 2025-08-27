@@ -23,23 +23,27 @@ replicate_single_filesystem() {
 ##
 ## Note that only mounted file systems will be replicated.
 replicate_all_filesystems() {
-  log "Determining all ZFS file systems ..."
+  echo "Replicating all ZFS file systems to rclone destination \"$target\" ..."
+  echo
+  echo "Determining all ZFS file systems ..."
   declare fs_list
   if ! fs_list=$(set -x; zfs list -H -o name -t fs -r)
   then
-    log "Error while trying to determine all ZFS file systems."; return 1
+    echo "Error while trying to determine all ZFS file systems."; return 1
   fi
-  log "Successfully determined all ZFS file systems. Sic:"
+  echo "Successfully determined all ZFS file systems. Sic:"
   echo "$fs_list"
   echo
-  log "Replicating all ZFS file systems to rclone destination \"$target\" ..."
+  echo "Iterating over all determined ZFS file systems ..."
   for fs in $fs_list
   do
     echo
     replicate "$fs"
   done
   echo
-  log "Finished replicating all ZFS file systems to rclone destination \"$target\"."
+  echo "Finished iterating over all determined ZFS file systems."
+  echo
+  echo "Finished replicating all ZFS file systems to rclone destination \"$target\"."
 }
 
 ## Replicates the specified file system to the defined target.
@@ -51,10 +55,10 @@ replicate_all_filesystems() {
 ## Arguments:
 ##   $1   file system to be replicated
 replicate() {
-  log "Replicating ZFS file system \"$1\" to rclone destination \"$target\" ..."
+  echo "Replicating ZFS file system \"$1\" to rclone destination \"$target\" ..."
   if ! is_filesystem_mounted "$1"
   then
-    log "File system \"$1\" will be ignored. Either it is not mounted or the mounted option could not be retrieved.";
+    echo "File system \"$1\" will be ignored. Either it is not mounted or the mounted option could not be retrieved.";
   else
     declare snapshot_name
     snapshot_name="${me}_$(date +%Y%m%dT%H%M%S)"
@@ -64,7 +68,7 @@ replicate() {
       destroy_snapshot "$1" "$snapshot_name"
     fi
   fi
-  log "Finished replicating ZFS file system \"$1\" to rclone destination \"$target\"."
+  echo "Finished replicating ZFS file system \"$1\" to rclone destination \"$target\"."
 }
 
 ## Checks whether the specified file system is actually mounted.
@@ -79,7 +83,7 @@ is_filesystem_mounted() {
   declare zfs_opt_mounted
   if ! zfs_opt_mounted=$(set -x; zfs get -H -o value mounted "$1")
   then
-    log "Error while trying to get the ZFS option \"mounted\"."; return 1
+    echo "Error while trying to get the ZFS option \"mounted\"."; return 1
   fi
   test "$zfs_opt_mounted" = "yes"
 }
@@ -94,12 +98,12 @@ is_filesystem_mounted() {
 ##   0   if `zfs` could be called successfully
 ##   1   otherwise
 create_snapshot() {
-  log "Creating snapshot ..."
+  echo "Creating snapshot ..."
   if ! (set -x; zfs snapshot "${1}@${2}")
   then
-    log "Error while trying to create snapshot."; return 1
+    echo "Error while trying to create snapshot."; return 1
   fi
-  log "Snapshot successfully created."
+  echo "Snapshot successfully created."
 }
 
 ## Syncs the specified snapshot of the specified file system to the defined target.
@@ -114,17 +118,17 @@ create_snapshot() {
 ##   0   if `zfs` and `rclone` could be called successfully
 ##   1   otherwise
 sync() {
-  log "Sync source to target ..."
+  echo "Sync source to target ..."
   declare mountpoint
   if ! mountpoint=$(set -x; zfs get -H -o value mountpoint "$1")
   then
-    log "Error while trying to get the ZFS option \"mountpoint\"."; return 1
+    echo "Error while trying to get the ZFS option \"mountpoint\"."; return 1
   fi
   if ! (set -x; rclone sync --create-empty-src-dirs "$mountpoint/.zfs/snapshot/$2" "$target/$1")
   then
-    log "Error while trying to \"rclone sync\"."; return 1
+    echo "Error while trying to \"rclone sync\"."; return 1
   fi
-  log "Successfully synced source to target."
+  echo "Successfully synced source to target."
 }
 
 ## Destroys the ZFS snapshot.
@@ -137,12 +141,12 @@ sync() {
 ##   0   if `zfs` could be called successfully
 ##   1   otherwise
 destroy_snapshot() {
-  log "Destroying snapshot ..."
+  echo "Destroying snapshot ..."
   if ! (set -x; zfs destroy "${1}@${2}")
   then
-    log "Error while trying to destroy snapshot."; return 1
+    echo "Error while trying to destroy snapshot."; return 1
   fi
-  log "Snapshot successfully destroyed."
+  echo "Snapshot successfully destroyed."
 }
 
 ## Parses and checks the given arguments according to the documented usage.
@@ -153,7 +157,7 @@ destroy_snapshot() {
 ##
 ## Sets global variables:
 ##   command   command to use
-##   source    source zfs file system
+##   source    source zfs file system (if applicable)
 ##   target    target rclone remote
 parse_and_check_arguments() {
   if [ -z "$*" ] || [ "$1" = "help" ]
@@ -283,7 +287,7 @@ print_usage_and_exit() {
   echo "Replicated data is put into a path which is derived from the name of the"
   echo "replicated ZFS file system. See examples for an explanation."
   echo
-  echo "If running as a scheduled job, consider redirecting the output to a log file,"
+  echo "If running as a cron job, consider redirecting the output to a log file,"
   echo "because $me prints out various log messages on the console."
   echo
   echo "Examples:"
@@ -294,16 +298,6 @@ print_usage_and_exit() {
   echo "The last example replicates all content of the ZFS file system \"pool/data\""
   echo "to the rclone destination \"backup:/single/pool/data\"."
   exit "$1"
-}
-
-## Prints the specified message with a prepended timestamp.
-##
-## Arguments:
-##   $1   message to be printed
-log() {
-  declare ts
-  ts=$(date -Iseconds)
-  echo "[$ts] $1"
 }
 
 main "$@"
