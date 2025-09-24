@@ -128,7 +128,7 @@ sync() {
   then
     echo "Error while trying to get the ZFS option \"mountpoint\"."; return 1
   fi
-  if ! (set -x; rclone sync "$options" "$mountpoint/.zfs/snapshot/$2" "$target/$1")
+  if ! (set -x; rclone sync $options "$mountpoint/.zfs/snapshot/$2" "$target/$1")
   then
     echo "Error while trying to \"rclone sync\"."; return 1
   fi
