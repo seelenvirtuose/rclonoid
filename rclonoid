@@ -15,7 +15,11 @@ main() {
 ##
 ## Note that only mounted file systems will be replicated.
 replicate_single_filesystem() {
+  echo "Replicating ZFS file system \"$source\" to rclone destination \"$target\" ..."
+  echo
   replicate "$source"
+  echo
+  echo "Finished replicating ZFS file system \"$source\" to rclone destination \"$target\"."
 }
 
 ## Replicates all file systems to the defined target remote.
@@ -55,10 +59,10 @@ replicate_all_filesystems() {
 ## Arguments:
 ##   $1   file system to be replicated
 replicate() {
-  echo "Replicating ZFS file system \"$1\" to rclone destination \"$target\" ..."
+  echo "Replicating ZFS file system \"$1\" ..."
   if ! is_filesystem_mounted "$1"
   then
-    echo "File system \"$1\" will be ignored. Either it is not mounted or the mounted option could not be retrieved.";
+    echo "ZFS file system \"$1\" will be ignored. Either it is not mounted or the mounted option could not be retrieved.";
   else
     declare snapshot_name
     snapshot_name="${me}_$(date +%Y%m%dT%H%M%S)"
@@ -68,7 +72,7 @@ replicate() {
       destroy_snapshot "$1" "$snapshot_name"
     fi
   fi
-  echo "Finished replicating ZFS file system \"$1\" to rclone destination \"$target\"."
+  echo "Finished replicating ZFS file system \"$1\"."
 }
 
 ## Checks whether the specified file system is actually mounted.
@@ -118,17 +122,17 @@ create_snapshot() {
 ##   0   if `zfs` and `rclone` could be called successfully
 ##   1   otherwise
 sync() {
-  echo "Sync source to target ..."
+  echo "Syncing ..."
   declare mountpoint
   if ! mountpoint=$(set -x; zfs get -H -o value mountpoint "$1")
   then
     echo "Error while trying to get the ZFS option \"mountpoint\"."; return 1
   fi
-  if ! (set -x; rclone sync --create-empty-src-dirs "$mountpoint/.zfs/snapshot/$2" "$target/$1")
+  if ! (set -x; rclone sync "$options" "$mountpoint/.zfs/snapshot/$2" "$target/$1")
   then
     echo "Error while trying to \"rclone sync\"."; return 1
   fi
-  echo "Successfully synced source to target."
+  echo "Successfully synced."
 }
 
 ## Destroys the ZFS snapshot.
@@ -159,94 +163,29 @@ destroy_snapshot() {
 ##   command   command to use
 ##   source    source zfs file system (if applicable)
 ##   target    target rclone remote
+##   options   any further arguments that are options for the rclone command
 parse_and_check_arguments() {
-  if [ -z "$*" ] || [ "$1" = "help" ]
-  then
-    print_usage_and_exit 0
-  fi
+  if [ -z "$*" ] || [ "$1" = "help" ]; then print_usage_and_exit 0; fi
 
-  # Parse all arguments
-
-  declare arg_command
-  declare -A arg_options
-  declare -a arg_values
-
-  declare arg_option
-  declare arg_opt_key
-  declare arg_opt_value
-
-  arg_command="$1"
+  command="$1"
   shift
-  while [ $# -gt 0 ]
-  do
-    case "$1" in
-      -*)
-        arg_option="${1:1}"
-        shift
-        arg_opt_key="$(echo "$arg_option" | cut -d "=" -f 1)"
-        arg_opt_value="$(echo "$arg_option" | cut -d "=" -f 2)"
-        arg_options["$arg_opt_key"]="$arg_opt_value"
-        ;;
-      *)
-        arg_values+=("$1")
-        shift
-        ;;
-    esac
-  done
-
-  # Check command
-
-  if [ -z "$arg_command" ]
-  then
-    usage_error "Error: No command provided."
-  fi
-  case "$arg_command" in
-    single|all)
-      ;;
-    *)
-      usage_error "Error: Unknown command \"$arg_command\"."
-      ;;
+  case "$command" in
+    single|all) ;;
+    *) usage_error "Error: Unknown command \"$command\"." ;;
   esac
 
-  # Check options
-
-  if [ -n "${arg_options[*]@K}" ]
-  then
-    usage_error "Error: $me does not (yet) support any options."
-  fi
-
-  # Check values
-
-  case "$arg_command" in
-    single)
-      if [ ${#arg_values[*]} -lt 2 ] || [ ${#arg_values[*]} -gt 2 ]
-      then
-        usage_error \
-          "Error: Wrong number of arguments." \
-          "  The \"single\" command requires exactly two arguments: a source and a target."
-      fi
-      ;;
-    all)
-      if [ ${#arg_values[*]} -lt 1 ] || [ ${#arg_values[*]} -gt 1 ]
-      then
-        usage_error \
-          "Error: Wrong number of arguments." \
-          "  The \"all\" command requires exactly one argument: the target."
-      fi
-      ;;
-  esac
-
-  # "Export" command and values
-
-  command="$arg_command"
   if [ "$command" = "single" ]
   then
-    source="${arg_values[0]}"
-    target="${arg_values[1]}"
-  elif [ "$command" = "all" ]
-  then
-    target="${arg_values[0]}"
+    source="$1"
+    shift
+    if [ -z "$source" ]; then usage_error "Error: No source provided."; fi
   fi
+
+  target="$1"
+  shift
+  if [ -z "$target" ]; then usage_error "Error: No target provided."; fi
+
+  options="$*"
 }
 
 ## Prints the specified error message, then prints the usage, and then exits with exit code 2.
@@ -265,16 +204,19 @@ usage_error() {
 ##   $1   exit code
 print_usage_and_exit() {
   echo "Usage:"
-  echo "  $me single <SOURCE> <TARGET>"
-  echo "  $me all <TARGET>"
+  echo "  $me single <SOURCE> <TARGET> [<OPTIONS>]"
+  echo "  $me all <TARGET> [<OPTIONS>]"
   echo
   echo "Replicates one or more ZFS file systems via \"rclone sync\" to the specified"
   echo "target."
   echo
-  echo "  SOURCE      Designates the single ZFS file system to be replicated."
+  echo "  SOURCE    Identifies the single ZFS file system to be replicated."
   echo
-  echo "  TARGET      Identifies an rclone remote. Note that rclone remotes require a"
-  echo "              trailing colon. A destination path may also be appended."
+  echo "  TARGET    Identifies an rclone remote. Note that rclone remotes require a"
+  echo "            trailing colon. A destination path may also be appended."
+  echo
+  echo "  OPTIONS   Any further argument is considered an option that will be passed"
+  echo "            unmodified to the rclone command."
   echo
   echo "Obviously, rclone must be installed and configured. Especially, the specified"
   echo "target rclone remote must be configured and reachable."
@@ -284,19 +226,16 @@ print_usage_and_exit() {
   echo "all content of the snapshot directory to the target. If a ZFS file system is"
   echo "not mounted, then there is no snapshot directory, and thus it can't be synced."
   echo
-  echo "Replicated data is put into a path which is derived from the name of the"
-  echo "replicated ZFS file system. See examples for an explanation."
-  echo
-  echo "If running as a cron job, consider redirecting the output to a log file,"
-  echo "because $me prints out various log messages on the console."
+  echo "The name of the replicated ZFS file system will also be the root directory of"
+  echo "all replicated files. E.g. replicating the source ZFS file system \"tank/data\""
+  echo "to the target rclone remote \"backup:/somedir\" will actually sync all files to"
+  echo "\"backup:/somedir/tank/data\"."
   echo
   echo "Examples:"
   echo "  $me all backup:"
   echo "  $me all backup:/all"
+  echo "  $me all backup:/all --create-empty-src-dirs"
   echo "  $me single pool/data backup:/single"
-  echo
-  echo "The last example replicates all content of the ZFS file system \"pool/data\""
-  echo "to the rclone destination \"backup:/single/pool/data\"."
   exit "$1"
 }
 
